@@ -1,4 +1,3 @@
-"""Gera as figuras do artigo (modelo estrela e gráficos dos KPIs) a partir do DW."""
 import sys
 from pathlib import Path
 
@@ -9,7 +8,7 @@ import pandas as pd
 from matplotlib.patches import FancyBboxPatch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from etl.config import dw_engine  # noqa: E402
+from etl.config import engine_dw
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "figuras"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -81,7 +80,7 @@ def modelo_estrela():
 def receita_mensal(eng):
     df = pd.read_sql("SELECT ano_mes, canal_venda, receita_liquida FROM dw.vw_kpi01_receita_liquida", eng)
     df = df.pivot(index="ano_mes", columns="canal_venda", values="receita_liquida").fillna(0)
-    df = df.loc[df.index < "2025-06"]  # junho/2025 tem apenas dias parciais
+    df = df.loc[df.index < "2025-06"]
     x = pd.to_datetime(df.index + "-01")
     fig, ax = plt.subplots(figsize=(8, 3.6))
     for canal, cor in (("Revenda", AZUL), ("Online", LARANJA)):
@@ -141,7 +140,7 @@ def ticket_medio(eng):
 
 
 def main():
-    eng = dw_engine()
+    eng = engine_dw()
     modelo_estrela()
     receita_mensal(eng)
     margem_canal(eng)

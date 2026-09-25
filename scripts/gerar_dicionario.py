@@ -1,11 +1,10 @@
-"""Gera o dicionário de dados (docs/dicionario_dados.md) a partir do catálogo do PostgreSQL."""
 import sys
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from etl.config import dw_engine  # noqa: E402
+from etl.config import engine_dw
 
 TABELAS = ["fato_vendas", "fato_cota_vendedor", "dim_tempo", "dim_produto", "dim_cliente",
            "dim_territorio", "dim_vendedor", "dim_promocao", "dim_metodo_envio"]
@@ -43,7 +42,7 @@ FROM pg_class WHERE relnamespace = 'dw'::regnamespace AND relkind = 'r'
 
 
 def carregar_dicionario():
-    eng = dw_engine()
+    eng = engine_dw()
     colunas = pd.read_sql(SQL_COLUNAS, eng)
     tabelas = pd.read_sql(SQL_TABELAS, eng).set_index("tabela")["descricao"].to_dict()
     return colunas[colunas.tabela.isin(TABELAS)], tabelas

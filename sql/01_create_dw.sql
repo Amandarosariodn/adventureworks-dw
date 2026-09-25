@@ -1,10 +1,3 @@
--- =============================================================================
--- Data Warehouse AdventureWorks - Modelo multidimensional (esquema estrela)
--- Banco: adventureworks_dw | Schema: dw
--- Fatos: fato_vendas (grão: item de pedido de venda)
---        fato_cota_vendedor (grão: vendedor x trimestre)
--- =============================================================================
-
 CREATE SCHEMA IF NOT EXISTS dw;
 SET search_path TO dw;
 
@@ -12,26 +5,23 @@ DROP TABLE IF EXISTS fato_vendas, fato_cota_vendedor CASCADE;
 DROP TABLE IF EXISTS dim_tempo, dim_produto, dim_cliente, dim_territorio,
                      dim_vendedor, dim_promocao, dim_metodo_envio CASCADE;
 
--- -----------------------------------------------------------------------------
--- Dimensões
--- -----------------------------------------------------------------------------
 CREATE TABLE dim_tempo (
-    sk_tempo         INTEGER PRIMARY KEY,          -- AAAAMMDD
+    sk_tempo         INTEGER PRIMARY KEY,
     data             DATE        NOT NULL UNIQUE,
     ano              SMALLINT    NOT NULL,
     semestre         SMALLINT    NOT NULL,
     trimestre        SMALLINT    NOT NULL,
     mes              SMALLINT    NOT NULL,
     nome_mes         VARCHAR(15) NOT NULL,
-    ano_mes          CHAR(7)     NOT NULL,         -- AAAA-MM
+    ano_mes          CHAR(7)     NOT NULL,
     dia              SMALLINT    NOT NULL,
-    dia_semana       SMALLINT    NOT NULL,         -- 1=segunda ... 7=domingo
+    dia_semana       SMALLINT    NOT NULL,
     nome_dia_semana  VARCHAR(15) NOT NULL,
     fim_de_semana    BOOLEAN     NOT NULL
 );
 
 CREATE TABLE dim_produto (
-    sk_produto        SERIAL PRIMARY KEY,
+    sk_produto        INTEGER PRIMARY KEY,
     produto_id        INTEGER      NOT NULL UNIQUE,
     nome_produto      VARCHAR(60)  NOT NULL,
     numero_produto    VARCHAR(25)  NOT NULL,
@@ -51,27 +41,27 @@ CREATE TABLE dim_produto (
 );
 
 CREATE TABLE dim_territorio (
-    sk_territorio  SERIAL PRIMARY KEY,
+    sk_territorio  INTEGER PRIMARY KEY,
     territorio_id  INTEGER     NOT NULL UNIQUE,
     nome_territorio VARCHAR(50) NOT NULL,
     codigo_pais    VARCHAR(3)  NOT NULL,
     pais           VARCHAR(50) NOT NULL,
-    grupo          VARCHAR(50) NOT NULL          -- North America, Europe, Pacific
+    grupo          VARCHAR(50) NOT NULL
 );
 
 CREATE TABLE dim_cliente (
-    sk_cliente    SERIAL PRIMARY KEY,
+    sk_cliente    INTEGER PRIMARY KEY,
     cliente_id    INTEGER      NOT NULL UNIQUE,
     nome_cliente  VARCHAR(150) NOT NULL,
-    tipo_cliente  VARCHAR(20)  NOT NULL,          -- Pessoa física | Loja (revenda)
+    tipo_cliente  VARCHAR(20)  NOT NULL,
     cidade        VARCHAR(50)  NOT NULL,
     estado        VARCHAR(50)  NOT NULL,
     pais          VARCHAR(50)  NOT NULL
 );
 
 CREATE TABLE dim_vendedor (
-    sk_vendedor     SERIAL PRIMARY KEY,
-    vendedor_id     INTEGER      NOT NULL UNIQUE, -- 0 = venda online (sem vendedor)
+    sk_vendedor     INTEGER PRIMARY KEY,
+    vendedor_id     INTEGER      NOT NULL UNIQUE,
     nome_vendedor   VARCHAR(150) NOT NULL,
     cargo           VARCHAR(60)  NOT NULL,
     territorio      VARCHAR(50)  NOT NULL,
@@ -82,7 +72,7 @@ CREATE TABLE dim_vendedor (
 );
 
 CREATE TABLE dim_promocao (
-    sk_promocao   SERIAL PRIMARY KEY,
+    sk_promocao   INTEGER PRIMARY KEY,
     promocao_id   INTEGER      NOT NULL UNIQUE,
     descricao     VARCHAR(255) NOT NULL,
     tipo          VARCHAR(50)  NOT NULL,
@@ -93,16 +83,13 @@ CREATE TABLE dim_promocao (
 );
 
 CREATE TABLE dim_metodo_envio (
-    sk_metodo_envio SERIAL PRIMARY KEY,
+    sk_metodo_envio INTEGER PRIMARY KEY,
     metodo_envio_id INTEGER      NOT NULL UNIQUE,
     nome_metodo     VARCHAR(50)  NOT NULL,
     taxa_base       NUMERIC(12,4) NOT NULL,
     taxa_por_kg     NUMERIC(12,4) NOT NULL
 );
 
--- -----------------------------------------------------------------------------
--- Fatos
--- -----------------------------------------------------------------------------
 CREATE TABLE fato_vendas (
     sk_data_pedido    INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
     sk_data_envio     INTEGER     REFERENCES dim_tempo(sk_tempo),
@@ -112,14 +99,14 @@ CREATE TABLE fato_vendas (
     sk_vendedor       INTEGER NOT NULL REFERENCES dim_vendedor(sk_vendedor),
     sk_promocao       INTEGER NOT NULL REFERENCES dim_promocao(sk_promocao),
     sk_metodo_envio   INTEGER NOT NULL REFERENCES dim_metodo_envio(sk_metodo_envio),
-    numero_pedido     INTEGER NOT NULL,           -- dimensão degenerada
+    numero_pedido     INTEGER NOT NULL,
     item_pedido_id    INTEGER NOT NULL,
-    canal_venda       VARCHAR(10) NOT NULL,       -- Online | Revenda
+    canal_venda       VARCHAR(10) NOT NULL,
     quantidade        INTEGER       NOT NULL,
     preco_unitario    NUMERIC(14,4) NOT NULL,
-    valor_bruto       NUMERIC(14,4) NOT NULL,     -- quantidade * preço unitário
+    valor_bruto       NUMERIC(14,4) NOT NULL,
     valor_desconto    NUMERIC(14,4) NOT NULL,
-    valor_liquido     NUMERIC(14,4) NOT NULL,     -- receita da linha
+    valor_liquido     NUMERIC(14,4) NOT NULL,
     custo_total       NUMERIC(14,4) NOT NULL,
     lucro_bruto       NUMERIC(14,4) NOT NULL,
     frete_rateado     NUMERIC(14,4) NOT NULL,
@@ -130,8 +117,8 @@ CREATE TABLE fato_vendas (
 
 CREATE TABLE fato_cota_vendedor (
     sk_vendedor   INTEGER NOT NULL REFERENCES dim_vendedor(sk_vendedor),
-    sk_tempo_inicio INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo), -- início do período da cota
-    sk_tempo_fim    INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo), -- fim do período da cota
+    sk_tempo_inicio INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
+    sk_tempo_fim    INTEGER NOT NULL REFERENCES dim_tempo(sk_tempo),
     valor_cota      NUMERIC(14,2) NOT NULL,
     PRIMARY KEY (sk_vendedor, sk_tempo_inicio)
 );
@@ -142,11 +129,8 @@ CREATE INDEX ix_fv_cliente   ON fato_vendas (sk_cliente);
 CREATE INDEX ix_fv_territorio ON fato_vendas (sk_territorio);
 CREATE INDEX ix_fv_vendedor  ON fato_vendas (sk_vendedor);
 
--- -----------------------------------------------------------------------------
--- Controle de execução da ETL
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS etl_execucao (
-    id           SERIAL PRIMARY KEY,
+    id           INTEGER PRIMARY KEY,
     tabela       VARCHAR(50) NOT NULL,
     linhas       INTEGER     NOT NULL,
     inicio       TIMESTAMP   NOT NULL,
@@ -154,9 +138,6 @@ CREATE TABLE IF NOT EXISTS etl_execucao (
     status       VARCHAR(10) NOT NULL
 );
 
--- -----------------------------------------------------------------------------
--- Dicionário de dados (comentários no catálogo do PostgreSQL)
--- -----------------------------------------------------------------------------
 COMMENT ON TABLE dim_tempo IS 'Calendário diário cobrindo todo o período de pedidos e envios';
 COMMENT ON COLUMN dim_tempo.sk_tempo IS 'Chave substituta no formato AAAAMMDD';
 COMMENT ON COLUMN dim_tempo.data IS 'Data do calendário';

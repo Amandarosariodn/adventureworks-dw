@@ -1,4 +1,3 @@
-"""Configuração de conexões lida de variáveis de ambiente (.env)."""
 import os
 
 from dotenv import load_dotenv
@@ -7,24 +6,18 @@ from sqlalchemy import create_engine
 load_dotenv()
 
 
-def _url(prefix: str, default_db: str) -> str:
-    user = os.getenv(f"{prefix}_USER", os.getenv("USER", "postgres"))
-    password = os.getenv(f"{prefix}_PASSWORD", "")
-    host = os.getenv(f"{prefix}_HOST", "localhost")
-    port = os.getenv(f"{prefix}_PORT", "5432")
-    db = os.getenv(f"{prefix}_DB", default_db)
-    auth = f"{user}:{password}" if password else user
-    return f"postgresql+psycopg2://{auth}@{host}:{port}/{db}"
+def conectar(prefixo, banco_padrao):
+    usuario = os.getenv(prefixo + "_USER", os.getenv("USER"))
+    senha = os.getenv(prefixo + "_PASSWORD", "")
+    host = os.getenv(prefixo + "_HOST", "localhost")
+    porta = os.getenv(prefixo + "_PORT", "5432")
+    banco = os.getenv(prefixo + "_DB", banco_padrao)
+    return create_engine(f"postgresql+psycopg2://{usuario}:{senha}@{host}:{porta}/{banco}")
 
 
-SOURCE_URL = _url("SRC", "Adventureworks")
-DW_URL = _url("DW", "adventureworks_dw")
-DW_SCHEMA = "dw"
+def engine_origem():
+    return conectar("SRC", "Adventureworks")
 
 
-def source_engine():
-    return create_engine(SOURCE_URL)
-
-
-def dw_engine():
-    return create_engine(DW_URL)
+def engine_dw():
+    return conectar("DW", "adventureworks_dw")

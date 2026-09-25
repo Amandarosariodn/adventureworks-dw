@@ -1,8 +1,3 @@
-"""Gera o artigo científico no padrão Unisales (docs/artigo/Artigo_DW_AdventureWorks.docx).
-
-Os números citados no texto são lidos do Data Warehouse no momento da geração.
-Uso: python scripts/gerar_artigo.py --github https://github.com/<usuario>/adventureworks-dw
-"""
 import argparse
 import re
 import sys
@@ -22,8 +17,8 @@ from PIL import Image, ImageOps
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "scripts"))
-from etl.config import dw_engine  # noqa: E402
-from gerar_dicionario import TABELAS, carregar_dicionario  # noqa: E402
+from etl.config import engine_dw
+from gerar_dicionario import TABELAS, carregar_dicionario
 
 FIG = RAIZ / "docs" / "figuras"
 SAIDA = RAIZ / "docs" / "artigo" / "Artigo_DW_AdventureWorks.docx"
@@ -31,7 +26,6 @@ FONTE = "Arial"
 DATA_ACESSO = "23 set. 2026"
 
 
-# ----------------------------------------------------------------------------- formatação
 def br(v, casas=2):
     s = f"{v:,.{casas}f}"
     return s.replace(",", "X").replace(".", ",").replace("X", ".")
@@ -58,7 +52,6 @@ def fmt_par(p, tamanho=12, alinhamento=WD_ALIGN_PARAGRAPH.JUSTIFY, antes=0, depo
 
 
 def add_runs(p, texto, tamanho=12):
-    """Aceita **negrito** e *itálico* inline."""
     for parte in re.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", texto):
         if not parte:
             continue
@@ -88,7 +81,6 @@ class Artigo:
         sec.page_width, sec.page_height = Cm(21), Cm(29.7)
         sec.top_margin, sec.left_margin = Cm(3), Cm(3)
         sec.bottom_margin, sec.right_margin = Cm(2), Cm(2)
-        # Paginação: Arial 10, canto superior direito
         p = sec.header.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         fld = OxmlElement("w:fldSimple")
@@ -102,7 +94,6 @@ class Artigo:
         fld.append(r)
         p._p.append(fld)
 
-    # --- blocos de texto
     def par(self, texto, **kw):
         tamanho = kw.pop("tamanho", 12)
         p = self.doc.add_paragraph()
@@ -129,7 +120,6 @@ class Artigo:
             add_runs(p, f"{letra}) {item}{fim}", tamanho)
             fmt_par(p, tamanho=tamanho, depois=3, recuo_esq=0.6)
 
-    # --- legendas
     def _legenda(self, rotulo, titulo):
         p = self.doc.add_paragraph()
         add_runs(p, f"{rotulo} – {titulo}", 12)
@@ -155,7 +145,6 @@ class Artigo:
         self._fonte(fonte or "Elaboração própria (2026), a partir do Data Warehouse.")
         return self.n_fig
 
-    # --- tabelas e quadros
     def _grade(self, cabecalho, linhas, larguras, fechado, fonte_mono=False):
         t = self.doc.add_table(rows=1 + len(linhas), cols=len(cabecalho))
         t.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -184,13 +173,12 @@ class Artigo:
                 for r in p.runs:
                     if fonte_mono and i > 0:
                         r.font.name = "Courier New"
-                if i == 0 and not fechado:  # traço separando cabeçalho (tabela aberta)
+                if i == 0 and not fechado:
                     tcpr = cel._tc.get_or_add_tcPr()
                     tb = OxmlElement("w:tcBorders")
                     b = OxmlElement("w:bottom")
                     b.set(qn("w:val"), "single"); b.set(qn("w:sz"), "6"); b.set(qn("w:color"), "000000")
                     tb.append(b); tcpr.append(tb)
-        # Repete o cabeçalho quando a tabela passa de uma página
         trpr = t.rows[0]._tr.get_or_add_trPr()
         h = OxmlElement("w:tblHeader"); h.set(qn("w:val"), "true"); trpr.append(h)
         return t
@@ -212,7 +200,6 @@ class Artigo:
         return self.n_quadro
 
     def quadro_sql(self, titulo, sql):
-        """Quadro fechado de uma célula contendo o código SQL em fonte monoespaçada."""
         self.n_quadro += 1
         self.vazio(entrelinhas=1.5)
         self._legenda(f"Quadro {self.n_quadro}", titulo)
@@ -235,18 +222,16 @@ class Artigo:
         print("  artigo:", SAIDA.relative_to(RAIZ))
 
 
-# ----------------------------------------------------------------------------- dados
 def kpi_sql():
-    """Separa o arquivo de views em {nome_view: sql}."""
     texto = (RAIZ / "sql" / "02_kpis_views.sql").read_text(encoding="utf-8")
     blocos = {}
-    for m in re.finditer(r"(-- KPI \d+ - [^\n]+\n)(CREATE OR REPLACE VIEW (\w+) AS\n.*?;)", texto, re.S):
-        blocos[m.group(3)] = m.group(2)
+    for m in re.finditer(r"CREATE OR REPLACE VIEW (vw_kpi\d+\w*) AS\n.*?;", texto, re.S):
+        blocos[m.group(1)] = m.group(0)
     return blocos
 
 
 def carregar_numeros(eng):
-    q = lambda sql: pd.read_sql(sql, eng)  # noqa: E731
+    q = lambda sql: pd.read_sql(sql, eng)
     n = {}
     n["resumo"] = q("SELECT * FROM dw.vw_kpi_resumo").iloc[0]
     anual = q("SELECT ano, SUM(receita_liquida) r FROM dw.vw_kpi01_receita_liquida GROUP BY ano ORDER BY ano")
@@ -274,12 +259,11 @@ def carregar_numeros(eng):
     return n
 
 
-# ----------------------------------------------------------------------------- conteúdo
 def escrever(a: Artigo, n, github):
     r = n["resumo"]
     anual, canal = n["anual"], n["canal"]
     cresc_24 = 100 * (anual[2024] - anual[2023]) / anual[2023]
-    share_online = lambda ano: 100 * canal.loc[ano, "Online"] / canal.loc[ano].sum()  # noqa: E731
+    share_online = lambda ano: 100 * canal.loc[ano, "Online"] / canal.loc[ano].sum()
     mc = n["margem_canal"]
     cat = n["cat"].set_index("categoria")
     terr = n["terr"]
@@ -294,7 +278,6 @@ def escrever(a: Artigo, n, github):
     m_rv = m[m.canal_venda == "Revenda"].set_index("ano")["margem_bruta_pct"]
     periodo_i, periodo_f = n["periodo"]["i"], n["periodo"]["f"]
 
-    # ---------------- Pré-textuais
     t = a.doc.add_paragraph()
     add_runs(t, "**DATA WAREHOUSE PARA ANÁLISE DE VENDAS DA ADVENTUREWORKS: MODELAGEM MULTIDIMENSIONAL, ETL EM PYTHON E INDICADORES DE DESEMPENHO**")
     fmt_par(t, alinhamento=WD_ALIGN_PARAGRAPH.CENTER, depois=12)
@@ -338,7 +321,6 @@ def escrever(a: Artigo, n, github):
         "reproducible ETL turns operational data into actionable information for decision making.")
     a.par("**Keywords:** data warehouse; dimensional modeling; ETL; key performance indicators; PostgreSQL.")
 
-    # ---------------- 1 Introdução
     a.titulo("1 INTRODUÇÃO")
     a.par(
         "Os sistemas transacionais, também chamados de sistemas OLTP (Online Transaction Processing), são "
@@ -373,7 +355,6 @@ def escrever(a: Artigo, n, github):
         "O artigo está organizado da seguinte forma: a seção 2 apresenta o desenvolvimento, da avaliação da "
         "origem à análise dos indicadores, e a seção 3 traz as considerações finais.")
 
-    # ---------------- 2 Desenvolvimento
     a.titulo("2 DESENVOLVIMENTO")
     a.par(
         "O projeto foi executado em um ambiente local com PostgreSQL 16, que hospeda tanto a base de origem "
@@ -472,29 +453,31 @@ def escrever(a: Artigo, n, github):
              ["Etapa", "Módulo", "O que faz"],
              [
                  ["Extração", "etl/extract.py",
-                  "Executa dez consultas SQL na origem (produtos, custos, territórios, clientes, endereços, vendedores, "
-                  "promoções, métodos de envio, cotas e vendas) e carrega o resultado em DataFrames do pandas."],
+                  "Executa nove consultas SQL na origem (produtos, territórios, clientes, endereços, vendedores, "
+                  "promoções, métodos de envio, cotas e vendas) e carrega o resultado em DataFrames do pandas. "
+                  "A consulta de vendas já traz o custo padrão vigente na data do pedido."],
                  ["Transformação", "etl/transform.py",
                   "Gera a dim_tempo; desnormaliza a hierarquia de produto; traduz códigos (linha, classe, estilo); "
                   "substitui nulos por \"Não informado\"; unifica pessoas e lojas na dim_cliente; cria o membro "
-                  "\"Venda online\"; atribui chaves substitutas; busca o custo vigente na data do pedido; calcula "
-                  "valores bruto, desconto, líquido, custo e lucro; rateia frete e impostos pela participação do "
-                  "item no subtotal; resolve as chaves estrangeiras e interrompe a carga se alguma não for encontrada."],
+                  "\"Venda online\"; atribui chaves substitutas; calcula valores bruto, desconto, líquido, custo e "
+                  "lucro; rateia frete e impostos pela participação do item no subtotal; resolve as chaves "
+                  "estrangeiras e interrompe a carga se alguma não for encontrada."],
                  ["Carga", "etl/load.py",
-                  "Recria o schema a partir de sql/01_create_dw.sql, carrega dimensões e depois fatos com o comando "
-                  "COPY do PostgreSQL (carga em massa), ajusta as sequences e registra cada tabela em dw.etl_execucao."],
-                 ["Publicação", "run_etl.py",
-                  "Cria as views dos indicadores (sql/02_kpis_views.sql) e exibe a receita total carregada para conferência."],
+                  "Recria o schema a partir de sql/01_create_dw.sql, grava dimensões e depois fatos com o método "
+                  "to_sql do pandas, registra cada tabela em dw.etl_execucao e cria as views dos indicadores "
+                  "(sql/02_kpis_views.sql)."],
+                 ["Orquestração", "run_etl.py",
+                  "Chama as três etapas em sequência e exibe o tempo total de execução."],
              ], [2.6, 3.0, 9.9])
     a.par(
         "Duas regras de transformação merecem destaque. A primeira é o **custo histórico**: para cada item, "
-        "a ETL localiza em *productcosthistory* o custo padrão vigente na data do pedido e, na ausência de "
+        "a consulta de extração localiza em *productcosthistory* o custo padrão vigente na data do pedido e, na ausência de "
         "histórico, utiliza o custo atual do produto. Isso evita que a margem de vendas antigas seja "
         "distorcida por reajustes posteriores. A segunda é o **rateio de frete e impostos**, que distribui os "
         "valores do cabeçalho entre os itens na proporção do valor líquido de cada um, permitindo analisá-los "
         "por produto ou categoria.")
     a.par(
-        f"A execução completa leva cerca de 13 segundos. A validação consistiu em comparar a receita "
+        f"A execução completa leva cerca de 35 segundos. A validação consistiu em comparar a receita "
         f"carregada no DW ({moeda(r.receita_liquida)}) com a soma da coluna *subtotal* de "
         "*sales.salesorderheader* na origem, e os valores coincidiram. A Tabela 1 apresenta o volume carregado por tabela.")
     a.tabela("Linhas carregadas por tabela do Data Warehouse",
@@ -599,7 +582,6 @@ def escrever(a: Artigo, n, github):
         f"{int(cota.loc[2024,'bateram'])} de {int(cota.loc[2024,'total'])}. Somado à queda de margem, o dado "
         "indica que a equipe de revenda perdeu eficiência e deve ser objeto de revisão de metas e incentivos.")
 
-    # ---------------- 3 Considerações finais
     a.titulo("3 CONSIDERAÇÕES FINAIS")
     a.par(
         "Este trabalho construiu um Data Warehouse de vendas para a AdventureWorks, desde a avaliação do "
@@ -622,7 +604,6 @@ def escrever(a: Artigo, n, github):
         "processos de negócio, como compras e produção, compartilhando as dimensões já criadas, e orquestrar "
         "a ETL com uma ferramenta de agendamento, como o Apache Airflow.")
 
-    # ---------------- Referências
     a.titulo("REFERÊNCIAS")
     refs = [
         "CENTRO UNIVERSITÁRIO SALESIANO. **Guia de elaboração e normalização de trabalhos acadêmicos e de pesquisa**. Vitória: Unisales, 2024. Disponível em: https://unisales.br/wp-content/uploads/2024/07/NOVO-GUIA-DE-ELABORACAO-E-NORMALIZACAO-DE-TRABALHOS-ACADEMICOS-E-DE-PESQUISA-29.05.pdf. Acesso em: " + DATA_ACESSO + ".",
@@ -638,7 +619,6 @@ def escrever(a: Artigo, n, github):
         a.par(ref, alinhamento=WD_ALIGN_PARAGRAPH.LEFT, depois=0)
         a.vazio()
 
-    # Notas de autoria (rodapé simulado ao fim, Arial 10)
     a.par("¹ Graduando(a) em [curso] pelo Centro Universitário Salesiano (Unisales). E-mail: [e-mail].", tamanho=10, depois=0)
     a.par("² Professor(a) orientador(a) do Centro Universitário Salesiano (Unisales). E-mail: [e-mail].", tamanho=10, depois=0)
 
@@ -647,7 +627,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--github", default="https://github.com/SEU-USUARIO/adventureworks-dw")
     args = ap.parse_args()
-    numeros = carregar_numeros(dw_engine())
+    numeros = carregar_numeros(engine_dw())
     artigo = Artigo()
     escrever(artigo, numeros, args.github)
     artigo.salvar()

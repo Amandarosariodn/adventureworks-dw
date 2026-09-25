@@ -1,14 +1,10 @@
-"""Exporta as views de KPI do DW para um Excel (uma aba por indicador).
-
-Útil para usar o Power BI no navegador (app.powerbi.com), que não acessa o PostgreSQL local.
-"""
 import sys
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from etl.config import dw_engine  # noqa: E402
+from etl.config import engine_dw
 
 SAIDA = Path(__file__).resolve().parent.parent / "docs" / "dashboard" / "kpis_adventureworks.xlsx"
 VIEWS = {
@@ -27,7 +23,7 @@ VIEWS = {
 
 
 def main():
-    eng = dw_engine()
+    eng = engine_dw()
     SAIDA.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(SAIDA, engine="openpyxl") as xls:
         for aba, view in VIEWS.items():
